@@ -22,6 +22,9 @@
     .sounds { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 24px; color: var(--muted); }
     .sounds select { max-width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text); font: inherit; }
     .sounds input { width: 90px; accent-color: #3e6f5a; }
+    .stats { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }
+    .stats h2 { margin: 0 0 8px; font-size: 18px; }
+    .stats p { margin: 0; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -51,6 +54,10 @@
       <label for="volume">Громкость</label>
       <input id="volume" type="range" min="0" max="100" value="30">
     </div>
+    <section class="stats" aria-labelledby="stats-title">
+      <h2 id="stats-title">Статистика за неделю</h2>
+      <p id="weekly-stats" aria-live="polite"></p>
+    </section>
   </main>
   <script>
     const soundSelect = document.getElementById('sound');
@@ -137,6 +144,34 @@
     const breakButton = document.getElementById('break');
     const studyButton = document.getElementById('study');
     const hint = document.querySelector('.hint');
+    const weeklyStats = document.getElementById('weekly-stats');
+    const statsKey = 'timer-pomodoros';
+    let completedPomodoros = [];
+    let storageAvailable = true;
+    try {
+      const saved = JSON.parse(localStorage.getItem(statsKey) || '[]');
+      if (Array.isArray(saved)) completedPomodoros = saved.filter(value => typeof value === 'number' && Number.isFinite(value));
+    } catch (_) { storageAvailable = false; }
+
+    function renderStats() {
+      const now = new Date();
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      weekStart.setDate(weekStart.getDate() - (weekStart.getDay() + 6) % 7);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      const count = completedPomodoros.filter(time => time >= weekStart.getTime() && time < weekEnd.getTime()).length;
+      weeklyStats.textContent = `Завершено помодоров с понедельника: ${count}` + (storageAvailable ? '' : ' (сохранение в браузере недоступно)');
+    }
+
+    function recordPomodoro() {
+      completedPomodoros.push(Date.now());
+      try { localStorage.setItem(statsKey, JSON.stringify(completedPomodoros)); }
+      catch (_) { storageAvailable = false; }
+      renderStats();
+    }
+
+    renderStats();
+    window.addEventListener('focus', renderStats);
     let deadline = 0;
     let interval = null;
     let remaining = duration;
@@ -156,6 +191,7 @@
         pause.disabled = true;
         button.textContent = 'Начать заново';
         if (duration === studyDuration) {
+          recordPomodoro();
           status.textContent = 'Время вышло! Выберите перерыв или начните учёбу заново.';
           breakButton.hidden = false;
         } else {
