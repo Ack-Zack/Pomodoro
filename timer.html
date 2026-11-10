@@ -50,11 +50,11 @@
       <label for="sound">Фоновый звук</label>
       <select id="sound">
         <option value="off">Выключен</option>
-        <option value="brown">Глубокий шум</option>
-        <option value="soft">Мягкий шум</option>
-        <option value="air">Тихий воздушный шум</option>
-        <option value="hum">Низкое гудение</option>
-        <option value="ambient">Спокойный аккорд</option>
+        <option value="rain/light-rain.mp3">Тихий дождь</option>
+        <option value="rain/rain-on-window.mp3">Дождь за окном</option>
+        <option value="nature/waves.mp3">Морские волны</option>
+        <option value="nature/river.mp3">Течение реки</option>
+        <option value="nature/campfire.mp3">Треск костра</option>
       </select>
       <label for="volume">Громкость</label>
       <input id="volume" type="range" min="0" max="100" value="30">
@@ -68,75 +68,61 @@
   <script>
     const soundSelect = document.getElementById('sound');
     const volumeControl = document.getElementById('volume');
-    let audioContext;
-    let soundSources = [];
-    let soundGain;
+    const backgroundAudio = new Audio();
+    backgroundAudio.crossOrigin = 'anonymous';
+    backgroundAudio.loop = true;
+    const soundLevels = {
+      'rain/light-rain.mp3': 2.61,
+      'rain/rain-on-window.mp3': 0.40,
+      'nature/waves.mp3': 2.49,
+      'nature/river.mp3': 1.77,
+      'nature/campfire.mp3': 5.74
+    };
+    let soundContext;
+    let soundLevel;
+    let soundVolume;
     let soundRequest = 0;
-
-    function stopSound() {
-      if (soundGain && audioContext) {
-        const now = audioContext.currentTime;
-        soundGain.gain.cancelScheduledValues(now);
-        soundGain.gain.setTargetAtTime(0, now, 0.04);
-        soundSources.forEach(source => source.stop(now + 0.25));
-      }
-      soundSources = [];
-      soundGain = null;
-    }
+    let timerIsPaused = false;
 
     soundSelect.addEventListener('change', async () => {
       const request = ++soundRequest;
-      stopSound();
-      if (soundSelect.value === 'off') return;
+      backgroundAudio.pause();
+      if (soundSelect.value === 'off') {
+        backgroundAudio.removeAttribute('src');
+        backgroundAudio.load();
+        return;
+      }
       try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) throw new Error('Audio unavailable');
-        audioContext ||= new AudioContext();
-        await audioContext.resume();
-        // Ignore a selection that changed while the audio context was starting.
-        if (request !== soundRequest) return;
-        soundGain = audioContext.createGain();
-        soundGain.gain.setValueAtTime(0, audioContext.currentTime);
-        soundGain.gain.setTargetAtTime(Number(volumeControl.value) / 100 * 0.12, audioContext.currentTime, 0.15);
-        soundGain.connect(audioContext.destination);
-        const choice = soundSelect.value;
-        if (choice === 'hum' || choice === 'ambient') {
-          const frequencies = choice === 'hum' ? [110, 110.5] : [130.81, 164.81, 196];
-          frequencies.forEach(frequency => {
-            const oscillator = audioContext.createOscillator();
-            const voiceGain = audioContext.createGain();
-            oscillator.type = 'sine';
-            oscillator.frequency.value = frequency;
-            voiceGain.gain.value = 1 / frequencies.length;
-            oscillator.connect(voiceGain).connect(soundGain);
-            soundSources.push(oscillator);
-            oscillator.start();
-          });
-        } else {
-          const noise = audioContext.createBuffer(1, audioContext.sampleRate * 8, audioContext.sampleRate);
-          const samples = noise.getChannelData(0);
-          for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
-          const source = audioContext.createBufferSource();
-          const filter = audioContext.createBiquadFilter();
-          source.buffer = noise;
-          source.loop = true;
-          filter.type = 'lowpass';
-          filter.frequency.value = { brown: 180, soft: 550, air: 1100 }[choice];
-          source.connect(filter).connect(soundGain);
-          soundSources.push(source);
-          source.start();
+        if (!soundContext) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          soundContext = new AudioContext();
+          const source = soundContext.createMediaElementSource(backgroundAudio);
+          soundLevel = soundContext.createGain();
+          const limiter = soundContext.createDynamicsCompressor();
+          limiter.threshold.value = -6;
+          limiter.knee.value = 0;
+          limiter.ratio.value = 20;
+          limiter.attack.value = 0.003;
+          limiter.release.value = 0.15;
+          soundVolume = soundContext.createGain();
+          soundVolume.gain.value = Number(volumeControl.value) / 100;
+          source.connect(soundLevel).connect(limiter).connect(soundVolume).connect(soundContext.destination);
         }
+        soundLevel.gain.value = soundLevels[soundSelect.value];
+        backgroundAudio.src = `https://raw.githubusercontent.com/remvze/moodist/main/public/sounds/${soundSelect.value}`;
+        if (timerIsPaused) return;
+        await soundContext.resume();
+        if (request !== soundRequest) return;
+        await backgroundAudio.play();
       } catch (_) {
         if (request !== soundRequest) return;
-        stopSound();
         soundSelect.value = 'off';
-        document.getElementById('status').textContent = 'Не удалось включить фоновый звук.';
+        document.getElementById('status').textContent = 'Не удалось загрузить звук. Проверьте подключение к интернету.';
       }
     });
 
     volumeControl.addEventListener('input', () => {
-      if (!soundGain || soundSelect.value === 'off') return;
-      soundGain.gain.setTargetAtTime(Number(volumeControl.value) / 100 * 0.12, audioContext.currentTime, 0.04);
+      if (soundVolume) soundVolume.gain.setTargetAtTime(Number(volumeControl.value) / 100, soundContext.currentTime, 0.04);
     });
 
     const studyDuration = 25 * 60 * 1000;
@@ -208,6 +194,12 @@
 
     button.addEventListener('click', () => {
       if (interval !== null) return;
+      if (timerIsPaused && soundSelect.value !== 'off') {
+        soundContext.resume().then(() => backgroundAudio.play()).catch(() => {
+          status.textContent = 'Не удалось возобновить фоновый звук.';
+        });
+      }
+      timerIsPaused = false;
       if (remaining === 0) remaining = duration;
       breakButton.hidden = true;
       deadline = Date.now() + remaining;
@@ -221,6 +213,9 @@
     pause.addEventListener('click', () => {
       update();
       if (interval === null) return;
+      timerIsPaused = true;
+      ++soundRequest;
+      backgroundAudio.pause();
       clearInterval(interval);
       interval = null;
       button.disabled = false;
