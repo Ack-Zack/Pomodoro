@@ -38,8 +38,8 @@
     <div id="time" role="timer" aria-label="Оставшееся время">25:00</div>
     <div class="controls">
       <button id="start" type="button">Старт</button>
-      <button id="pause" type="button" disabled>Пауза</button>
-      <button id="reset" type="button">Сброс</button>
+      <button id="pause" type="button" hidden disabled>Пауза</button>
+      <button id="reset" type="button" hidden>Сброс</button>
       <button id="break" type="button" hidden>Перерыв 5 минут</button>
       <button id="study" type="button" hidden>Вернуться к учёбе</button>
     </div>
@@ -180,6 +180,8 @@
         clearInterval(interval);
         interval = null;
         button.disabled = false;
+        button.hidden = false;
+        pause.hidden = true;
         pause.disabled = true;
         button.textContent = 'Начать заново';
         if (duration === studyDuration) {
@@ -205,7 +207,10 @@
       deadline = Date.now() + remaining;
       status.textContent = 'Таймер запущен';
       button.disabled = true;
+      button.hidden = true;
       pause.disabled = false;
+      pause.hidden = false;
+      reset.hidden = false;
       update();
       interval = setInterval(update, 250);
     });
@@ -219,8 +224,10 @@
       clearInterval(interval);
       interval = null;
       button.disabled = false;
+      button.hidden = false;
       button.textContent = 'Продолжить';
       pause.disabled = true;
+      pause.hidden = true;
       status.textContent = 'Таймер на паузе';
     });
 
@@ -230,8 +237,11 @@
       remaining = duration;
       render();
       button.disabled = false;
+      button.hidden = false;
       button.textContent = 'Старт';
       pause.disabled = true;
+      pause.hidden = true;
+      reset.hidden = true;
       status.textContent = '';
       breakButton.hidden = true;
     });
