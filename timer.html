@@ -167,6 +167,35 @@
     let deadline = 0;
     let interval = null;
     let remaining = duration;
+    let alertContext;
+
+    function prepareAlert() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        alertContext ||= new AudioContext();
+        alertContext.resume().catch(() => {});
+      } catch (_) { /* The timer still works if audio is unavailable. */ }
+    }
+
+    function playAlert(isStudy) {
+      if (!alertContext || alertContext.state !== 'running') return;
+      const notes = isStudy ? [523.25, 659.25, 783.99] : [659.25, 523.25];
+      const now = alertContext.currentTime;
+      notes.forEach((frequency, index) => {
+        const start = now + index * 0.25;
+        const oscillator = alertContext.createOscillator();
+        const gain = alertContext.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = frequency;
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.12, start + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.4);
+        oscillator.connect(gain).connect(alertContext.destination);
+        oscillator.start(start);
+        oscillator.stop(start + 0.4);
+      });
+    }
 
     function render() {
       const seconds = Math.ceil(remaining / 1000);
@@ -177,6 +206,7 @@
       remaining = Math.max(0, deadline - Date.now());
       render();
       if (remaining === 0) {
+        playAlert(duration === studyDuration);
         clearInterval(interval);
         interval = null;
         button.disabled = false;
@@ -196,6 +226,7 @@
 
     button.addEventListener('click', () => {
       if (interval !== null) return;
+      prepareAlert();
       if (timerIsPaused && soundSelect.value !== 'off') {
         soundContext.resume().then(() => backgroundAudio.play()).catch(() => {
           status.textContent = 'Не удалось возобновить фоновый звук.';
