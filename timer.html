@@ -25,6 +25,11 @@
     .stats { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }
     .stats h2 { margin: 0 0 8px; font-size: 18px; }
     .stats p { margin: 0; color: var(--muted); }
+    .stats table { width: 100%; margin-top: 12px; border-collapse: collapse; text-align: left; font-size: 14px; font-variant-numeric: tabular-nums; }
+    .stats th, .stats td { padding: 8px 4px; border-bottom: 1px solid var(--border); }
+    .stats th { color: var(--muted); font-weight: 600; }
+    .stats th:last-child, .stats td:last-child { text-align: right; }
+    .stats tr[aria-current="date"] { background: var(--page); }
     .extras { margin-top: 24px; border-top: 1px solid var(--border); }
     .extras summary { padding: 18px 0 0; color: var(--muted); font-weight: 700; cursor: pointer; }
     .extras summary:focus-visible { outline: 3px solid #a7cbbb; outline-offset: 4px; }
@@ -61,7 +66,11 @@
       </div>
       <section class="stats" aria-labelledby="stats-title">
         <h2 id="stats-title">Статистика за неделю</h2>
-        <p id="weekly-stats" aria-live="polite"></p>
+        <p id="weekly-stats" aria-live="polite">Завершено помодоров за неделю: 0</p>
+        <table aria-label="Завершённые помодоры по дням текущей недели">
+          <thead><tr><th scope="col">День</th><th scope="col">Дата</th><th scope="col">Помодоры</th></tr></thead>
+          <tbody id="daily-stats"></tbody>
+        </table>
       </section>
     </details>
   </main>
@@ -137,6 +146,7 @@
     const studyButton = document.getElementById('study');
     const hint = document.querySelector('.hint');
     const weeklyStats = document.getElementById('weekly-stats');
+    const dailyStats = document.getElementById('daily-stats');
     const statsKey = 'timer-pomodoros';
     let completedPomodoros = [];
     let storageAvailable = true;
@@ -149,10 +159,29 @@
       const now = new Date();
       const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       weekStart.setDate(weekStart.getDate() - (weekStart.getDay() + 6) % 7);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-      const count = completedPomodoros.filter(time => time >= weekStart.getTime() && time < weekEnd.getTime()).length;
-      weeklyStats.textContent = `Завершено помодоров с понедельника: ${count}` + (storageAvailable ? '' : ' (сохранение в браузере недоступно)');
+      const days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+      let total = 0;
+      dailyStats.replaceChildren();
+      days.forEach((name, index) => {
+        const dayStart = new Date(weekStart);
+        dayStart.setDate(dayStart.getDate() + index);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+        const count = completedPomodoros.filter(time => time >= dayStart.getTime() && time < dayEnd.getTime()).length;
+        total += count;
+        const row = document.createElement('tr');
+        if (now >= dayStart && now < dayEnd) row.setAttribute('aria-current', 'date');
+        const day = document.createElement('th');
+        day.scope = 'row';
+        day.textContent = name;
+        const date = document.createElement('td');
+        date.textContent = dayStart.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+        const value = document.createElement('td');
+        value.textContent = count;
+        row.append(day, date, value);
+        dailyStats.append(row);
+      });
+      weeklyStats.textContent = `Завершено помодоров за неделю: ${total}` + (storageAvailable ? '' : ' (сохранение в браузере недоступно)');
     }
 
     function recordPomodoro() {
@@ -164,6 +193,7 @@
 
     renderStats();
     window.addEventListener('focus', renderStats);
+    document.querySelector('.extras').addEventListener('toggle', renderStats);
     let deadline = 0;
     let interval = null;
     let remaining = duration;
